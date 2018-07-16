@@ -1,11 +1,13 @@
 from datetime import timedelta
-
+from time import sleep
 import luigi
-from luigi.contrib.s3 import S3Target
-from luigi.contrib.kubernetes import KubernetesJobTask
 import os
 
-IMAGE = "tac-example:v1"
+from luigi.contrib.kubernetes import KubernetesJobTask
+from luigi.contrib.s3 import S3Target
+
+
+IMAGE = 'tac-example:v1'
 BUCKET = os.environ['S3_BUCKET']
 
 
@@ -14,7 +16,7 @@ class SourceData(luigi.ExternalTask):
 
     def output(self):
         return S3Target(
-            path='s3://{bucket}/tac-example/source/{date:%Y-%m-%d}.csv'
+            path='s3://{bucket}/tac-example/data/source/{date:%Y-%m-%d}.csv'
                  .format(bucket=BUCKET, date=self.date)
         )
 
@@ -27,22 +29,8 @@ class SourceData(luigi.ExternalTask):
         return True
 
 
-class FetchData(KubernetesJobTask):
+class FetchData(luigi.Task):
     date = luigi.DateParameter()
-
-    @property
-    def name(self):
-        return 'transform-data'
-
-    @property
-    def spec_schema(self):
-        return {
-            "containers": [{
-                "name": self.name,
-                "image": IMAGE,
-                "command": self.cmd
-            }],
-        }
 
     def requires(self):
         return SourceData(date=self.date)
@@ -53,11 +41,12 @@ class FetchData(KubernetesJobTask):
                  .format(bucket=BUCKET, date=self.date)
         )
 
-    @property
-    def cmd(self):
-        command = ['python', '-m', 'tac.fetch',
-                   self.input().path, self.output().path]
-        return command
+    def run(self):
+        print('Reading from {} and writing to {}'
+              .format(self.input().path, self.output().path))
+        sleep(1)
+        # self.output().makedirs()
+        self.output().open('w').close()
 
 
 class TransformData(KubernetesJobTask):
@@ -72,7 +61,7 @@ class TransformData(KubernetesJobTask):
         return {
             "containers": [{
                 "name": self.name,
-                "image": IMAGE,
+                "image": 'tac-example:v1',
                 "command": self.cmd
             }],
         }
@@ -94,23 +83,9 @@ class TransformData(KubernetesJobTask):
         return command
 
 
-class Predict(KubernetesJobTask):
+class Predict(luigi.Task):
     date = luigi.DateParameter()
     model_name = luigi.Parameter()
-
-    @property
-    def name(self):
-        return 'predict'
-
-    @property
-    def spec_schema(self):
-        return {
-            "containers": [{
-                "name": self.name,
-                "image": IMAGE,
-                "command": self.cmd
-            }],
-        }
 
     def requires(self):
         return TransformData(date=self.date)
@@ -121,11 +96,12 @@ class Predict(KubernetesJobTask):
                  .format(bucket=BUCKET, date=self.date, model=self.model_name)
         )
 
-    @property
-    def cmd(self):
-        command = ['python', '-m', 'tac.predict',
-                   self.model_name, self.input().path, self.output().path]
-        return command
+    def run(self):
+        print('Predicting with model {} and saving to {}'
+              .format(self.model_name, self.output().path))
+        sleep(1)
+        # self.output().makedirs()
+        self.output().open('w').close()
 
 
 class MakePredictions(luigi.WrapperTask):

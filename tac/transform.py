@@ -1,18 +1,19 @@
 import click
-import os
 from time import sleep
+from luigi.contrib.s3 import S3Target
+import boto3.s3.transfer  # Luigi's bug workaround
 
 
 def transform_data(paths):
     print('Transforming data')
-    sleep(1)
+    sleep(3)
     return 123
 
 
 def save_result(data, path):
     print('Saving result')
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    open(path, 'w').close()
+    sleep(3)
+    S3Target(path).open('w').close()
 
 
 @click.command()
